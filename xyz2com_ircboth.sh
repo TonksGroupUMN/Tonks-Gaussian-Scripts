@@ -38,18 +38,18 @@ SCRIPTPATH="$(dirname "$0")"
 
 function update_variables(){
 cd $SCRIPTPATH
-context="script_variables_xyz2com.db"
+context="script_variables_irc.db"
 if [ -f $context ]; then
  echo "loading current parameters..."
 else
-echo "creating script_variables_xyz2com.db to set default parameters..."
-        cat > script_variables_xyz2com.db << EOL
+echo "creating script_variables_irc.db to set default parameters..."
+        cat > script_variables_irc.db << EOL
 Number of processors=
 32
 Memory=
 80000MB
 Functional=
-m06 empiricaldispersion=gd3
+m06
 Basis=
 6-311g(d,p)
 Grid=
@@ -62,6 +62,10 @@ Spin=
 1
 Solvent(SMD)=
 bromobenzene
+Step Size for IRC
+5
+MaxPoints for IRC
+100
 
 # adding any extra lines above this one will break the script. Only edit the text below each respective field title!
 
@@ -77,6 +81,8 @@ w_grid=${var[10]}
 w_temp=${var[12]}
 charge=${var[14]}
 spin=${var[16]}
+steps=${var[20]}
+points=${var[22]}
 cd - > /dev/null
 }
 
@@ -205,26 +211,46 @@ esac
 
 }
 
-# below functions writes route card to com using prompt info from above
-# Note that freq calculation is assumed!
-
-function write_com (){
-cat > "$name"".com" << EOL
+function write_com_forward (){
+cat > "$name""_forward.com" << EOL
 %lindaworkers=in-cn1020
 %nprocshared=$w_proc
 %mem=$w_mem
 %chk=$name.chk
-# opt=(calcfc,maxcycle=512) freq $w_fun/$w_basis $w_solcard$w_sol$w_solend
+# irc=(calcfc,forward,maxpoints=$points,stepsize=$steps) $w_fun/$w_basis $w_solcard$w_sol$w_solend scf=(xqc,maxconventionalcycle=20,tight,IntRep)
 integral=grid=$w_grid temperature=$w_temp
 
 $name  
 
 $charge $spin
 EOL
-tail -n +3 $input >> $name.com #grabs xyz minus first two lines
-echo -e "\n" >> $name.com #must have empty line in .com file
+tail -n +3 $input >> $name""_forward.com #grabs xyz minus first two lines
+echo -e "\n" >> $name""_forward.com #must have empty line in .com file
 		
+mkdir forward
+mv "$name""_forward.com" forward/
 
+
+}
+
+function write_com_reverse (){
+cat > "$name""_reverse.com" << EOL
+%lindaworkers=in-cn1020
+%nprocshared=$w_proc
+%mem=$w_mem
+%chk=$name.chk
+# irc=(calcfc,reverse,maxpoints=$points,stepsize=$steps) $w_fun/$w_basis $w_solcard$w_sol$w_solend scf=(xqc,maxconventionalcycle=20,tight,IntRep)
+integral=grid=$w_grid temperature=$w_temp
+
+$name  
+
+$charge $spin
+EOL
+tail -n +3 $input >> $name""_reverse.com #grabs xyz minus first two lines
+echo -e "\n" >> $name""_reverse.com #must have empty line in .com file
+		
+mkdir reverse
+mv "$name""_reverse.com" reverse/
 
 
 }
@@ -235,7 +261,8 @@ function main (){
 	update_variables
 	menu1 #ask for parameters
 	menu2
-	write_com #generate com file
+	write_com_forward #generate com file
+	write_com_reverse #generate com file
 
 }
 

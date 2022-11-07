@@ -13,6 +13,7 @@
 
 # Update History
 # CWF 04/24/2020 original version
+# CWF 03/15/2022 added parsing for input extension, errors if incorrect
 #============================================= Begin of script =================================================================================
 
 input="$1" #declares the string with name of input file
@@ -26,6 +27,15 @@ input="$1" #declares the string with name of input file
 	name=${input%%.com} #cuts off the .xyz part of the input file and saves it to variable name
 	fi
 
+case "$input" in
+*.com | *.gjf )
+        # correct format
+        ;;
+*)
+        echo -e "\e[35mInput file is incorrect format, please use *.com or *.gjf \e[0m"
+        exit
+;;
+esac
 
 function write_xyz (){ # makes temporary xyz to grab xyz coordinates without route card and then remove any blank lines from com file 
 

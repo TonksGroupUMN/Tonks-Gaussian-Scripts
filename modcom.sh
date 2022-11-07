@@ -14,39 +14,81 @@
 # Update History
 # CWF 04/15/2020 original version
 #============================================= Begin of script =================================================================================
-
-
-
-# below function will grab info from starting file
-
 input="$1" #declares the string with name of input file
-name=${input%%.com} #cuts off the .com part of the input file and saves it to variable name
+dos2unix "$1" > /dev/null 2>&1 # converts any dos files to unix
+name=${input%%.com} #cuts off the .xyz part of the input file and saves it to variable name
+SCRIPTPATH="$(dirname "$0")" # determines the script's path is the appropriate directory
+
+# below function will ask for paramters
+
+function update_variables(){ # creates variables file if it doesn't exit
+cd $SCRIPTPATH
+context="script_variables.db"
+if [ -f $context ]; then
+ echo "loading current parameters..."
+else
+echo "creating script_variables.db to set default parameters..."
+        cat > script_variables.db << EOL
+Number of processors=
+32
+Memory=
+80000MB
+Functional=
+m06
+Basis=
+6-311g(d,p)
+Grid=
+ultrafinegrid
+Temperature=
+298.15
+Charge=
+0
+Spin=
+1
+Solvent(SMD)=
+bromobenzene
+
+# adding any extra lines above this one will break the script. Only edit the text below each respective field title!
+
+EOL
+fi
+
+mapfile -t -O 1 var <$context # stores variables for route card
+w_proc=${var[2]}
+w_mem=${var[4]}
+w_fun=${var[6]}
+w_basis=${var[8]}
+w_grid=${var[10]}
+w_temp=${var[12]}
+charge=${var[14]}
+spin=${var[16]}
+cd - > /dev/null
+}
 
 # below function will use menu to choose desired opt command of .com, in fancy colors
 
-function menu (){
-# begins first menu function and shows options
+function menu (){ # begins first menu function and shows options
 echo
 echo -e "\e[1;4mWhat should opt equal? (freq calc assumed)" 
-echo -e "\e[0;36m[1] calcfc,maxcyc=512"
-echo -e "\e[92m[2] ReadFc Geom=AllCheck Guess=Read (for regular)"
-echo -e "\e[33m[3] TS,calcfc,maxcyc=512"
-echo -e "\e[33m[4] TS,calcfc,noeigentest,maxcyc=512"
-echo -e "\e[92m[5] ReadFc Geom=AllCheck Guess=Read (for TS)"
-echo -e "\e[34m[6] restart"
-echo -e "\e[35m[7] manual input \e[0m"
-echo -e "\e[35m[8] manual input with no freq calc \e[0m"
+echo -e "\e[0;36m[1] calcfc,maxcycle=512"
+echo -e "\e[36m[2] ReadFc Geom=AllCheck Guess=Read (for GS)"
+echo -e "\e[36m[3] calcfc,maxcyc=512 + NMR=GIAO"
+echo -e "\e[33m[4] TS,calcfc,maxcycle=512"
+echo -e "\e[33m[5] TS,calcfc,noeigentest,maxcyc=512"
+echo -e "\e[33m[6] ReadFc Geom=AllCheck Guess=Read (for TS)"
+echo -e "\e[92m[7] restart"
+echo -e "\e[35m[8] manual input \e[0m"
+echo -e "\e[35m[9] manual input with no freq calc \e[0m"
 
 echo -e "Press any other button to exit"
 
 read answer
-# reads number answer
 case "$answer" in
 # Note case command to start menu option designations
 # Note variable is quoted.
 
   "1" | "1" )
-      w_new="(calcfc,maxcyc=512)"
+    w_new="(calcfc,maxcycle=512)"
 	w_f="freq"
 	#will set w_new variable to the answer choice, the other "1" is redundant, leftover from allowing capital or lowercase letters
 	
@@ -59,54 +101,57 @@ case "$answer" in
 	
   ;;
   
-    "3" | "3" )
-    w_new="(TS,calcfc,maxcyc=512)"
+  "3" | "3" )
+    w_new="(calcfc,maxcycle=512)"
+	w_f="freq"
+	w_miscoption="NMR=GIAO"
+	
+  ;;  
+  
+    "4" | "4" )
+    w_new="(TS,calcfc,maxcycle=512)"
 	w_f="freq=noraman"
 	
   ;;
   
-    "4" | "4" )
-    w_new="(TS,calcfc,noeigentest,maxcyc=512)"
+  "5" | "5" )
+    w_new="(TS,calcfc,noeigentest,maxcycle=512)"
 	w_f="freq=noraman"
 	
   ;;
 
-  "5" | "5" )
+  "6" | "6" )
     w_new="(ReadFc) Geom=AllCheck Guess=Read"
 	w_f="freq=noraman"
 	
   ;;
 
-
-
-    "6" | "6" )
+  "7" | "7" )
     w_new="(restart)"
 	w_f="freq"
 	
   ;;
-
   
-	"7" | "7" )
+  "8" | "8" )
 	echo "Please type your desired calculation (if blank returns to default)"
     read w_new
 	w_f="freq"
 # will read the manually typed answer, or set to default if left blank
 	if [ -z $w_new ];
 	then
-	w_new="(calcfc,maxcyc=512)"
+	w_new="(calcfc,maxcycle=512)"
 	w_f="freq"
 	fi
 	
-	
   ;;
   
-    "8" | "8" )
+    "9" | "9" )
 	echo "Please type your desired calculation (if blank returns to default)"
     read w_new
 # will read the manually typed answer, or set to default if left blank
 	if [ -z $w_new ];
 	then
-	w_new="(calcfc,maxcyc=512)"
+	w_new="(calcfc,maxcycle=512)"
 	w_f=""
 	fi
 	sed -i '5 s/freq //' $name.com	
@@ -126,13 +171,24 @@ esac
 # Note termination of case command
 }
 
-
-function menu2 (){
+function get_par (){
 # asks user if they want to modify parameters other than optimization, if other answer is pressed assumes no
 echo
-echo -e "\e[1;4mModify other parameters) (other buttons default to no)" 
-echo -e "\e[0;36m[Y or 1] yes (for freq or freq=noraman)"
-echo -e "\e[92m[N or 2] no (freq option remains from input) \e[0m"
+echo -e "\e[0;33mThese are the currently set parameters:\e[0m" 
+echo -e
+echo -e "\e[0mProcessors =" 	$w_proc
+echo "Memory =" 		$w_mem
+echo "Functional =" 	$w_fun
+echo "Basis =" 			$w_basis
+echo "Grid =" 			$w_grid
+echo "Temperature =" 	$w_temp
+echo "Charge =" 		$charge
+echo "Spin =" 			$spin
+echo "Solvent (if applicable) = ${var[18]}"
+echo -e
+echo -e "\e[92mSelect [Y, y, 1, or enter] to continue"
+echo -e "\e[1;31mSelect [N, n, or 2] to exit"
+echo -e "\e[35mSelect [3] to edit parameters (using nano), re-run script once your edits are complete \e[0m"
 
 read answer
 
@@ -141,118 +197,77 @@ case "$answer" in
 
   "Y" | "y" | "1" | "yes" |"Yes" )
   # Accept upper or lowercase input or 1.
-    echo "Enter parameters"
-	#will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
+ 	#will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
 	
+  ;;
+  
+    "N" | "n" | "2" | "no" |"No" |"NO" )
+  # Accept upper or lowercase input or 1.
+ 	#will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
+	exit
+  ;;
+# Note double semicolon to terminate each option.
+
+    "3" )
+  # Accept upper or lowercase input or 1.
+ 	#will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
+	cd $SCRIPTPATH
+	nano $context
+	exit
+  ;;
+  
+esac
+
+}
+
+function get_sol (){
+# asks user if they want to include a solvent, presumed yes if no answer given
+echo
+echo -e "\e[0;36mDo you want to include a solvent? currently set as: ${var[18]}" 
+echo -e "\e[\e[92m[Y or 1] yes"
+echo -e "\e[1;31m[N or 2] no \e[0m"
+
+read answer
+
+case "$answer" in
+# Note variable is quoted.
+
+  "Y" | "y" | "1" | "yes" |"Yes" )
+  # Accept upper or lowercase input or 1.
+    echo "Type solvent or press enter for default solvent; currently set as: "${var[18]}
+	#will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
+		read w_sol
+		w_solcard="scrf=(smd,solvent="
+		w_solend=")"
+ 
+ if [ -z $w_sol ];
+	then
+	w_sol=${var[18]}
+	fi
+
   ;;
 # Note double semicolon to terminate each option.
 
   "N" | "n" | "2")
 	echo -e "\e[39m"
-# sed command syntax is as follows: -i to omit output, " rather than ' to allow for variables to be used, 5 dictates 5th line is only edited
-# begins edit after finding pattern match "opt=", stops edit after reaching blank space, replaces string after opt with variable, saves to .com
-	sed -i "5 s%\(opt=\)[^[:space:]]\+%\1$w_new%g" $name.com
-	exit		
+	if [ -z $w_sol ];
+	then
+	w_sol=" "
 	
+	fi
   ;;
   
           * )
    # if other button is pressed	  
    # Empty input (hitting RETURN) fits here, too.
-   
-	echo -e "\e[39m"
-	sed -i "5 s%\(opt=\)[^[:space:]]\+%\1$w_new%g" $name.com
-	exit
+    
+		w_solcard="scrf=(smd,solvent="
+		w_solend=")"
+		w_sol=${var[18]}
   ;;
 
 esac
 
-}
-
-function get_par (){
-	echo
-	echo -e "\e[1;4mChoose your parameters!"
-	echo -e "\e[0;92mChange nprocshared? (default is 32) \e[0m" #will submit question into terminal
-	read w_proc #will read user answer, w_proc is the string that is needed when writing .com, call back to with $w_proc
-
-	if [ -z $w_proc ]; #checks if anything was typed, note here the spaces between commands and brackets are necessary!
-	then
-	w_proc=32 #sets default if blank
-	fi
-	#echo $w_proc #sets answer if not blank
-	echo -e "\e[92mChange mem? (default is 80000MB, include unit) \e[0m" #begin new question, repeat till done
-	read w_mem
-
-	if [ -z $w_mem ];
-	then
-	w_mem="80000MB"
-	fi
-	
-	#echo $w_mem
-   
- 	echo -e "\e[92mChange basis/functional? (default is m06/6-311g(d,p)) \e[0m"
-	read w_fun
-
-	if [ -z $w_fun ];
-	then
-	w_fun="m06/6-311g(d,p)"
-	fi
-	
-	#echo $w_fun
- 
- 	echo -e "\e[92mChange solvent? (default is bromobenzene) \e[0m"
-	read w_sol
-
-	if [ -z $w_sol ];
-	then
-	w_sol="bromobenzene"
-	fi
-	
-	#echo $w_sol
- 
-	echo -e "\e[92mChange grid? (default is ultrafinegrid) \e[0m"
-	read w_grid
-
-	if [ -z $w_grid ];
-	then
-	w_grid="ultrafinegrid"
-	fi
-	
-	#echo $w_grid
-  
- 	echo -e "\e[92mChange temp? (default will be 296.15) \e[0m"
-	read w_temp
-
-	if [ -z $w_temp ];
-	then
-	w_temp="296.15"
-	
-	fi
-
-	#echo $w_temp
-
-	echo -e "\e[92mChange charge? (default will be 0) \e[0m"
-	read charge
-
-	if [ -z $charge ];
-	then
-	charge="0"
-	
-	fi
-
-	#echo $charge
-	
-		
-	echo -e "\e[92mChange spin? (default will be 1) \e[0m"
-	read spin
-
-	if [ -z $spin ];
-	then
-	spin="1"
-	
-	fi
-
-	#echo $spin
 }
         
 # below functions writes route card to com using prompt info from above
@@ -264,22 +279,29 @@ cat > "$name""new.com" << EOL
 %nprocshared=$w_proc
 %mem=$w_mem
 %chk=$name.chk
-# opt=$w_new $w_f $w_fun scrf=(smd,solvent=$w_sol)
-integral=grid=$w_grid temperature=$w_temp
-
-$name 
-
+# opt=$w_new $w_f $w_fun/$w_basis $w_solcard$w_sol$w_solend
+integral=grid=$w_grid temperature=$w_temp $w_miscoption
+placeholderline
+$name  
+placeholderline
 $charge $spin
 EOL
 
-tail -n +11 $input >> $name""new.com #grabs xyz minus first two lines
-echo -e "\n" >> $name""new.com #must have empty line in .com file
+sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' $input >> $name""new1.com
+awk -v RS='\n\n' 'END{printf "%s",$0}' $name""new1.com > $name""new2.com
+tail -n +2 $name""new2.com >> $name""new.com
+# tail -n +11 $input >> $name""new.com #grabs xyz minus first two lines
+echo "" >> $name""new.com;  sed -i '/^$/d;$G' $name""new.com; sed -i '/^$/d;$G' $name""new.com #^$ means match a line that has nothing between the beginning and the end (blank line) "The "d" command deletes an entire line that contains a matching pattern"
+sed -i 's/placeholderline//' $name""new.com
+# echo -e "\n" >> $name""new.com #must have empty line in .com file
 
 }
 
 function overwrite (){
 cp $name""new.com $name.com
 rm $name""new.com
+rm $name""new1.com
+rm $name""new2.com
 # this function is to replace old .com file with new .com and remove temporary .com
 
 
@@ -287,9 +309,10 @@ rm $name""new.com
 
 }
 function main (){
+	update_variables
 	menu
-	menu2
 	get_par #ask for parameters
+	get_sol # ask if solvent is needed
 	write_newcom #generate com file
 	overwrite
 	

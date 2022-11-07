@@ -22,6 +22,12 @@ then
 echo "Dude, where's my .out?"
 exit
 fi
+echo -e "\e[0m"
+echo
+echo -e "\e[1;36m The version of gaussian used was: \e[0m"
+grep -E -o -m 1 ".{0,0}/gaussian/.{0,7}" $1
+echo -e "\e[0m"
+echo
 echo -e "\e[1;36m The calculation parameters used were: \e[0m"
 grep -A 3 "#" $1 | head -n 2
 echo
@@ -40,7 +46,11 @@ grep -A7 Converged $1
 echo 
 echo
 
-# read -p "Press enter to continue"
+structures="$(grep -c "Converged?" $1)"
+echo -e "\e[1;36m Calculation Stats:\e[0m"
+echo -e "\e[1;36m ------------------\e[0m"
+echo -e "\e[1;36m Number of Structures: $structures \e[0m"
+
 echo
 
 echo "Check for number of imaginary modes. For an intermediate it should be 0, for a TS it should be exactly 1!"

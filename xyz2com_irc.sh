@@ -38,18 +38,18 @@ SCRIPTPATH="$(dirname "$0")"
 
 function update_variables(){
 cd $SCRIPTPATH
-context="script_variables_xyz2com.db"
+context="script_variables_irc.db"
 if [ -f $context ]; then
  echo "loading current parameters..."
 else
-echo "creating script_variables_xyz2com.db to set default parameters..."
-        cat > script_variables_xyz2com.db << EOL
+echo "creating script_variables_irc.db to set default parameters..."
+        cat > script_variables_irc.db << EOL
 Number of processors=
 32
 Memory=
 80000MB
 Functional=
-m06 empiricaldispersion=gd3
+m06
 Basis=
 6-311g(d,p)
 Grid=
@@ -62,6 +62,10 @@ Spin=
 1
 Solvent(SMD)=
 bromobenzene
+Step Size for IRC
+5
+MaxPoints for IRC
+100
 
 # adding any extra lines above this one will break the script. Only edit the text below each respective field title!
 
@@ -77,6 +81,8 @@ w_grid=${var[10]}
 w_temp=${var[12]}
 charge=${var[14]}
 spin=${var[16]}
+steps=${var[20]}
+points=${var[22]}
 cd - > /dev/null
 }
 
@@ -205,6 +211,41 @@ esac
 
 }
 
+function menu3 (){
+# asks user if they want to modify parameters other than optimization, if other answer is pressed assumes no
+echo
+echo -e "\e[0;36mWhat direction for IRC?" 
+echo -e "\e[\e[92m[f or forward] forward"
+echo -e "\e[1;31m[r or reverse] reverse \e[0m"
+
+read answer
+
+case "$answer" in
+# Note variable is quoted.
+
+  "F" | "f" | "forward")
+  # Accept upper or lowercase input or 1.
+		direction="forward"
+ 
+  ;;
+# Note double semicolon to terminate each option.
+
+  "R" | "r" | "reverse")
+		direction="reverse"
+  ;;
+  
+          * )
+   # if other button is pressed	  
+   # Empty input (hitting RETURN) fits here, too.
+    
+echo "must provide answer!"
+exit
+  ;;
+
+esac
+
+}
+
 # below functions writes route card to com using prompt info from above
 # Note that freq calculation is assumed!
 
@@ -214,7 +255,7 @@ cat > "$name"".com" << EOL
 %nprocshared=$w_proc
 %mem=$w_mem
 %chk=$name.chk
-# opt=(calcfc,maxcycle=512) freq $w_fun/$w_basis $w_solcard$w_sol$w_solend
+# irc=(calcfc,$direction,maxpoints=$points,stepsize=$steps) $w_fun/$w_basis $w_solcard$w_sol$w_solend scf=xqc,maxconventionalcycle=20,tight,IntRep)
 integral=grid=$w_grid temperature=$w_temp
 
 $name  
@@ -235,6 +276,7 @@ function main (){
 	update_variables
 	menu1 #ask for parameters
 	menu2
+	menu3
 	write_com #generate com file
 
 }
